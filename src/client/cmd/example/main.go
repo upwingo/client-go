@@ -4,20 +4,31 @@ import (
 	"client"
 	"client/api/v1"
 	"client/bots"
+	"flag"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 )
 
+var apiKey = flag.String("k", "", "API key")
+
 func main() {
-	upwingo := v1.NewUpwingo(v1.Config{APIKey: "XXX"})
+	flag.Parse()
+
+	if *apiKey == "" {
+		log.Fatal("apiKey undefined")
+	}
+
+	upwingo := v1.NewUpwingo(v1.Config{APIKey: *apiKey})
 
 	env := client.Client{
 		API:       upwingo,
 		Bot:       &bots.BotSimple{},
 		Reconnect: true,
-	}.Run()
+	}
+	env.Run()
 
 	<-terminate(func(sig os.Signal) {
 		env.Stop()

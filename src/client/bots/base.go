@@ -1,6 +1,8 @@
 package bots
 
-import "client/api"
+import (
+	"client/api"
+)
 
 type Bot interface {
 	OnInit()
@@ -10,17 +12,19 @@ type Bot interface {
 	GetChannels() []string
 	IsStopped() bool
 	SetStopped(stopped bool)
+
+	api() api.Binary
 	stop()
 }
 
 type Base struct {
-	api      api.Binary
+	apiInst  api.Binary
 	channels []string
 	stopped  bool
 }
 
 func (b *Base) SetAPI(api api.Binary) {
-	b.api = api
+	b.apiInst = api
 }
 
 func (b *Base) subscribe(channel string) {
@@ -39,6 +43,19 @@ func (b *Base) SetStopped(stopped bool) {
 	b.stopped = stopped
 }
 
+func (b *Base) api() api.Binary {
+	return b.apiInst
+}
+
 func (b *Base) stop() {
 	b.stopped = true
+}
+
+type OHLCVT struct {
+	Open   float64
+	High   float64
+	Low    float64
+	Close  float64
+	Volume float64
+	Time   int64
 }

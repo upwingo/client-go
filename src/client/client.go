@@ -22,7 +22,10 @@ func (c *Client) Run() *Client {
 		return c
 	}
 
+	c.API.TickerStop()
 	c.API.TickerStart(func() {
+		log.Print("client: connected")
+
 		for _, channel := range c.Bot.GetChannels() {
 			c.API.TickerWatch(channel, func(data interface{}) {
 				c.Bot.OnTick(data)
@@ -36,7 +39,11 @@ func (c *Client) Run() *Client {
 		log.Printf("client: %v", err)
 
 	}, func(err error) {
-		log.Printf("client: %v", err)
+		if err != nil {
+			log.Printf("client: disconnected: %v", err)
+		} else {
+			log.Print("client: disconnected")
+		}
 
 		if c.Reconnect {
 			c.API.TickerReconnect()

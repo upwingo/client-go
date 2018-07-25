@@ -1,6 +1,8 @@
 package bots
 
-import "fmt"
+import (
+	"log"
+)
 
 type BotSimple struct {
 	Base
@@ -11,5 +13,5 @@ func (b *BotSimple) OnInit() {
 }
 
 func (b *BotSimple) OnTick(data interface{}) {
-	fmt.Println(data)
+	log.Println(data)
 }

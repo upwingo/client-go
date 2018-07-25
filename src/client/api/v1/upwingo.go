@@ -9,10 +9,12 @@ import (
 	"github.com/sacOO7/socketcluster-client-go/scclient"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -39,9 +41,13 @@ type Config struct {
 }
 
 type Upwingo struct {
-	config       Config
-	socket       *scclient.Client
+	config Config
+
+	socket   *scclient.Client
+	socketMu sync.Mutex
+
 	stopWatchers []chan struct{}
+	stopsMu      sync.Mutex
 }
 
 func NewUpwingo(config Config) *Upwingo {
@@ -61,12 +67,16 @@ func NewUpwingo(config Config) *Upwingo {
 }
 
 func (u *Upwingo) TickerStart(onSuccess func(), onError func(err error), onDisconnect func(err error)) error {
+	u.socketMu.Lock()
+	defer u.socketMu.Unlock()
+
 	if u.socket != nil {
 		return errors.New("upwingo: ticker already started")
 	}
 
 	client := scclient.New(u.config.WSHost + fmt.Sprintf(":%d/socketcluster/", u.config.WSPort))
-	client.SetBasicListener(func(client scclient.Client) {
+	u.socket = &client
+	u.socket.SetBasicListener(func(client scclient.Client) {
 		if onSuccess != nil {
 			onSuccess()
 		}
@@ -75,18 +85,18 @@ func (u *Upwingo) TickerStart(onSuccess func(), onError func(err error), onDisco
 			onError(err)
 		}
 	}, func(client scclient.Client, err error) {
+		u.stopsMu.Lock()
 		for _, ch := range u.stopWatchers {
-			go func() { ch <- struct{}{} }()
+			go func(ch chan struct{}) { ch <- struct{}{} }(ch)
 		}
 		u.stopWatchers = u.stopWatchers[:0]
+		u.stopsMu.Unlock()
 
 		if onDisconnect != nil {
 			onDisconnect(err)
 		}
 	})
-	client.Connect()
-
-	u.socket = &client
+	u.socket.Connect()
 
 	return nil
 }
@@ -111,33 +121,47 @@ func (u *Upwingo) TickerWatch(channel string, onTick func(data interface{})) {
 		return
 	}
 
+	u.stopsMu.Lock()
 	stopChan := make(chan struct{}, 1)
-
 	go func() {
+		log.Print("upwingo: new watcher started")
 		for {
 			select {
 			case data, ok := <-dataChan:
 				if !ok {
+					log.Print("upwingo: watcher stopped on channel closing")
 					return
 				}
 				onTick(data)
 			case <-stopChan:
+				log.Print("upwingo: watcher stopped")
 				return
 			}
 		}
 	}()
-
 	u.stopWatchers = append(u.stopWatchers, stopChan)
+	u.stopsMu.Unlock()
 }
 
 func (u *Upwingo) TickerStop() {
+	var socket *scclient.Client
+
+	u.socketMu.Lock()
 	if u.socket != nil {
-		u.socket.Disconnect()
+		socket = u.socket
 		u.socket = nil
+	}
+	u.socketMu.Unlock()
+
+	if socket != nil && socket.IsConnected() {
+		socket.Disconnect()
 	}
 }
 
 func (u *Upwingo) TickerReconnect() {
+	u.socketMu.Lock()
+	defer u.socketMu.Unlock()
+
 	if u.socket != nil && !u.socket.IsConnected() {
 		u.socket.Connect()
 	}
@@ -268,21 +292,25 @@ func (u *Upwingo) request(method string, uri string, params map[string]string, d
 
 func decodeBalance(raw interface{}) api.Balance {
 	var balance api.Balance
+	balance.Free = make(map[string]float64)
+	balance.InGame = make(map[string]float64)
 
 	if rawMap, ok := raw.(map[string]interface{}); ok {
 		if free, ok := rawMap["FREE"]; ok {
 			if freeMap, ok := free.(map[string]interface{}); ok {
-				balance.Free = make(map[string]float64)
 				for currency, value := range freeMap {
-					balance.Free[currency], _ = strconv.ParseFloat(value.(string), 64)
+					if amount, err := strconv.ParseFloat(value.(string), 64); err == nil {
+						balance.Free[currency] = amount
+					}
 				}
 			}
 		}
 		if inGame, ok := rawMap["IN GAME"]; ok {
 			if inGameMap, ok := inGame.(map[string]interface{}); ok {
-				balance.InGame = make(map[string]float64)
 				for currency, value := range inGameMap {
-					balance.InGame[currency], _ = strconv.ParseFloat(value.(string), 64)
+					if amount, err := strconv.ParseFloat(value.(string), 64); err == nil {
+						balance.InGame[currency] = amount
+					}
 				}
 			}
 		}
