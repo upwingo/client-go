@@ -1,0 +1,9 @@
+bin
+pkg
+tmp
+src/github.com
+src/golang.org
+
+.idea
+.DS_Store
+Thumbs.db
