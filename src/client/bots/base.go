@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const POINT = 0.00000001
+
 type Bot interface {
 	OnInit()
 	OnTick(data interface{}) // concurrent tick handler
@@ -62,6 +64,15 @@ type Candle struct {
 	Time   int64
 }
 
+func (c *Candle) IsComplete() bool {
+	return c.Open > 0.0 &&
+		c.High > 0.0 &&
+		c.Low > 0.0 &&
+		c.Close > 0.0 &&
+		c.Volume >= 0.0 &&
+		c.Time > 0
+}
+
 func GetCandle(csv string) Candle {
 	var candle Candle
 
@@ -73,7 +84,7 @@ func GetCandle(csv string) Candle {
 
 	fields = fields[1:]
 
-	floats := make([]float64, 5)
+	var floats [5]float64
 	for i, field := range fields {
 		if i >= 5 {
 			break

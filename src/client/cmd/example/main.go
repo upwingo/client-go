@@ -21,11 +21,20 @@ func main() {
 		log.Fatal("apiKey undefined")
 	}
 
-	upwingo := v1.NewUpwingo(v1.Config{APIKey: *apiKey})
+	upwingo := v1.NewUpwingo(v1.Config{
+		APIKey: *apiKey,
+	})
 
 	env := client.Client{
-		API:       upwingo,
-		Bot:       &bots.BotSimple{},
+		API: upwingo,
+		Bot: &bots.BotSimple{
+			Exchange:  "bina",
+			Symbol:    "btc_usdt",
+			Timeframe: 10,
+			Limit:     "micro",
+			Currency:  "FREE",
+			Amount:    10,
+		},
 		Reconnect: true,
 	}
 	env.Run()
