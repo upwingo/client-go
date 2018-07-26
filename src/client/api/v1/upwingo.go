@@ -158,10 +158,20 @@ func (u *Upwingo) TickerStop() {
 	}
 }
 
-func (u *Upwingo) TickerReconnect() {
-	u.socketMu.Lock()
+func (u *Upwingo) TickerReconnect(timeout time.Duration) {
 	defer u.socketMu.Unlock()
 
+	u.socketMu.Lock()
+	if u.socket == nil || u.socket.IsConnected() {
+		return
+	}
+
+	u.socketMu.Unlock()
+
+	log.Print("upwingo: wait for reconnect")
+	time.Sleep(timeout)
+
+	u.socketMu.Lock()
 	if u.socket != nil && !u.socket.IsConnected() {
 		u.socket.Connect()
 	}

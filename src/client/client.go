@@ -4,6 +4,7 @@ import (
 	"client/api"
 	"client/bots"
 	"log"
+	"time"
 )
 
 type Client struct {
@@ -46,7 +47,7 @@ func (c *Client) Run() *Client {
 		}
 
 		if c.Reconnect {
-			c.API.TickerReconnect()
+			c.API.TickerReconnect(30 * time.Second)
 		}
 	})
 
