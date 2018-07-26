@@ -39,6 +39,10 @@ func (c *Client) Run() *Client {
 	}, func(err error) {
 		log.Printf("client: %v", err)
 
+		if c.Reconnect {
+			c.API.TickerReconnect(30 * time.Second)
+		}
+
 	}, func(err error) {
 		if err != nil {
 			log.Printf("client: disconnected: %v", err)
