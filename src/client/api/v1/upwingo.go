@@ -78,11 +78,11 @@ func (u *Upwingo) TickerStart(onSuccess func(), onError func(err error), onDisco
 	u.socket = &client
 	u.socket.SetBasicListener(func(client scclient.Client) {
 		if onSuccess != nil {
-			onSuccess()
+			go onSuccess()
 		}
 	}, func(client scclient.Client, err error) {
 		if onError != nil {
-			onError(err)
+			go onError(err)
 		}
 	}, func(client scclient.Client, err error) {
 		u.stopsMu.Lock()
@@ -93,7 +93,7 @@ func (u *Upwingo) TickerStart(onSuccess func(), onError func(err error), onDisco
 		u.stopsMu.Unlock()
 
 		if onDisconnect != nil {
-			onDisconnect(err)
+			go onDisconnect(err)
 		}
 	})
 	u.socket.Connect()
@@ -124,18 +124,21 @@ func (u *Upwingo) TickerWatch(channel string, onTick func(data interface{})) {
 	u.stopsMu.Lock()
 	stopChan := make(chan struct{}, 1)
 	go func() {
-		log.Print("upwingo: new watcher started")
+		log.Printf("upwingo: new watcher %s started", channel)
 		for {
 			select {
 			case data, ok := <-dataChan:
 				if !ok {
-					log.Print("upwingo: watcher stopped on channel closing")
+					log.Printf("upwingo: watcher %s stopped on channel closing", channel)
 					return
 				}
 				onTick(data)
 			case <-stopChan:
-				log.Print("upwingo: watcher stopped")
+				log.Printf("upwingo: watcher %s stopped", channel)
 				return
+			case <-time.After(2 * time.Minute):
+				log.Printf("upwingo: watcher %s idle", channel)
+				u.socket.Disconnect()
 			}
 		}
 	}()
@@ -275,7 +278,7 @@ func (u *Upwingo) request(method string, uri string, params map[string]string, d
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	client := http.Client{Timeout: time.Duration(30) * time.Second}
+	client := http.Client{Timeout: 30 * time.Second}
 
 	resp, err := client.Do(req)
 	if err != nil || resp == nil {

@@ -40,6 +40,7 @@ func main() {
 	env.Run()
 
 	<-terminate(func(sig os.Signal) {
+		log.Printf("main: %s", sig)
 		env.Stop()
 	})
 }
