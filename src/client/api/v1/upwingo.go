@@ -156,9 +156,9 @@ func (u *Upwingo) TickerWatch(channel string, onTick func(data interface{})) {
 		u.stopWatchers = append(u.stopWatchers, stopChan)
 	}
 
-	u.stopsPingMu.Unlock()
-
 	ping := u.ping
+
+	u.stopsPingMu.Unlock()
 
 	u.socket.Subscribe(channel)
 	u.socket.OnChannel(channel, func(eventName string, data interface{}) {
