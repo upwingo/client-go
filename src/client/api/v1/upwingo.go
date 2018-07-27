@@ -47,7 +47,8 @@ type Upwingo struct {
 	socketMu sync.Mutex
 
 	stopWatchers []chan struct{}
-	stopsMu      sync.Mutex
+	ping         chan struct{}
+	stopsPingMu  sync.Mutex
 }
 
 func NewUpwingo(config Config) *Upwingo {
@@ -85,12 +86,15 @@ func (u *Upwingo) TickerStart(onSuccess func(), onError func(err error), onDisco
 			go onError(err)
 		}
 	}, func(client scclient.Client, err error) {
-		u.stopsMu.Lock()
+		u.stopsPingMu.Lock()
+
 		for _, ch := range u.stopWatchers {
 			go func(ch chan struct{}) { ch <- struct{}{} }(ch)
 		}
 		u.stopWatchers = u.stopWatchers[:0]
-		u.stopsMu.Unlock()
+		u.ping = nil
+
+		u.stopsPingMu.Unlock()
 
 		if onDisconnect != nil {
 			go onDisconnect(err)
@@ -102,11 +106,59 @@ func (u *Upwingo) TickerStart(onSuccess func(), onError func(err error), onDisco
 }
 
 func (u *Upwingo) TickerWatch(channel string, onTick func(data interface{})) {
+	if onTick == nil {
+		return
+	}
+
+	u.socketMu.Lock()
+	defer u.socketMu.Unlock()
+
 	if u.socket == nil {
-		u.TickerStart(nil, nil, nil)
+		return
 	}
 
 	dataChan := make(chan interface{}, 1)
+
+	u.stopsPingMu.Lock()
+
+	stopChan := make(chan struct{}, 1)
+	go func() {
+		log.Printf("upwingo: new watcher %s started", channel)
+		for {
+			select {
+			case data := <-dataChan:
+				onTick(data)
+			case <-stopChan:
+				log.Printf("upwingo: watcher %s stopped", channel)
+				return
+			}
+		}
+	}()
+	u.stopWatchers = append(u.stopWatchers, stopChan)
+
+	if u.ping == nil {
+		u.ping = make(chan struct{}, 1)
+		stopChan := make(chan struct{}, 1)
+		go func(ping chan struct{}) {
+			log.Print("upwingo: new ping started")
+			for {
+				select {
+				case <-ping:
+				case <-stopChan:
+					log.Print("upwingo: ping stopped")
+					return
+				case <-time.After(2 * time.Minute):
+					log.Print("upwingo: watchers idle")
+					go u.tickerDisconnect()
+				}
+			}
+		}(u.ping)
+		u.stopWatchers = append(u.stopWatchers, stopChan)
+	}
+
+	u.stopsPingMu.Unlock()
+
+	ping := u.ping
 
 	u.socket.Subscribe(channel)
 	u.socket.OnChannel(channel, func(eventName string, data interface{}) {
@@ -115,35 +167,8 @@ func (u *Upwingo) TickerWatch(channel string, onTick func(data interface{})) {
 		case <-dataChan:
 			dataChan <- data
 		}
+		ping <- struct{}{}
 	})
-
-	if onTick == nil {
-		return
-	}
-
-	u.stopsMu.Lock()
-	stopChan := make(chan struct{}, 1)
-	go func() {
-		log.Printf("upwingo: new watcher %s started", channel)
-		for {
-			select {
-			case data, ok := <-dataChan:
-				if !ok {
-					log.Printf("upwingo: watcher %s stopped on channel closing", channel)
-					return
-				}
-				onTick(data)
-			case <-stopChan:
-				log.Printf("upwingo: watcher %s stopped", channel)
-				return
-			case <-time.After(2 * time.Minute):
-				log.Printf("upwingo: watcher %s idle", channel)
-				u.socket.Disconnect()
-			}
-		}
-	}()
-	u.stopWatchers = append(u.stopWatchers, stopChan)
-	u.stopsMu.Unlock()
 }
 
 func (u *Upwingo) TickerStop() {
@@ -178,6 +203,14 @@ func (u *Upwingo) TickerReconnect(timeout time.Duration) {
 	if u.socket != nil && !u.socket.IsConnected() {
 		u.socket.Connect()
 	}
+}
+
+func (u *Upwingo) tickerDisconnect() {
+	u.socketMu.Lock()
+	if u.socket != nil && u.socket.IsConnected() {
+		u.socket.Disconnect()
+	}
+	u.socketMu.Unlock()
 }
 
 func (u *Upwingo) GetTablesList() ([]byte, error) {
