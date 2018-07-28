@@ -13,7 +13,7 @@ type Bot interface {
 	OnTick(data interface{}) // concurrent tick handler
 
 	SetAPI(api api.Trade)
-	GetChannels() []string
+	SetSubscribe(fn func(string))
 	IsStopped() bool
 	SetStopped(stopped bool)
 
@@ -22,21 +22,23 @@ type Bot interface {
 }
 
 type Base struct {
-	apiInst  api.Trade
-	channels []string
-	stopped  bool
+	apiInst     api.Trade
+	subscribeFn func(string)
+	stopped     bool
 }
 
 func (b *Base) SetAPI(api api.Trade) {
 	b.apiInst = api
 }
 
-func (b *Base) subscribe(channel string) {
-	b.channels = append(b.channels, channel)
+func (b *Base) SetSubscribe(fn func(string)) {
+	b.subscribeFn = fn
 }
 
-func (b *Base) GetChannels() []string {
-	return b.channels
+func (b *Base) subscribe(channel string) {
+	if b.subscribeFn != nil {
+		b.subscribeFn(channel)
+	}
 }
 
 func (b *Base) IsStopped() bool {
