@@ -4,6 +4,7 @@ import (
 	"client/api"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 const POINT = 0.00000001
@@ -25,6 +26,7 @@ type Base struct {
 	apiInst     api.Trade
 	subscribeFn func(string)
 	stopped     bool
+	stoppedMu   sync.RWMutex
 }
 
 func (b *Base) SetAPI(api api.Trade) {
@@ -42,10 +44,16 @@ func (b *Base) subscribe(channel string) {
 }
 
 func (b *Base) IsStopped() bool {
+	b.stoppedMu.RLock()
+	defer b.stoppedMu.RUnlock()
+
 	return b.stopped
 }
 
 func (b *Base) SetStopped(stopped bool) {
+	b.stoppedMu.Lock()
+	defer b.stoppedMu.Unlock()
+
 	b.stopped = stopped
 }
 
@@ -54,7 +62,7 @@ func (b *Base) api() api.Trade {
 }
 
 func (b *Base) stop() {
-	b.stopped = true
+	b.SetStopped(true)
 }
 
 type Candle struct {
